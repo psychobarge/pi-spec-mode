@@ -106,14 +106,18 @@ export function isInside(dir: string, cwd: string, p: string): boolean {
 const READ_ONLY = new Set([
   "cat", "head", "tail", "less", "grep", "rg", "find", "fd", "ls", "pwd", "echo", "printf", "wc", "sort", "uniq",
   "diff", "file", "stat", "du", "tree", "which", "date", "basename", "dirname", "realpath", "cut", "tr", "jq", "awk", "sed", "true",
+  "cd", "read", // `read` is what rtk turns cat/head into
 ]);
 const GIT_READ = new Set(["status", "log", "diff", "show", "blame", "grep", "ls-files", "rev-parse", "branch"]);
 
-/** Fail-closed: every command of a pipeline/list must be a known reader; no redirection or substitution. */
+/** Fail-closed: every command of a pipeline/list must be a known reader; no redirection (except to /dev/null) or substitution. */
 export function isReadOnlyCommand(cmd: string): boolean {
+  cmd = cmd.replace(/[0-9&]?>>?\s*\/dev\/null|[0-9]>&[0-9]/g, "");
   if (/[>`]|\$\(|<\(/.test(cmd)) return false;
   return cmd.split(/\|\||&&|[|;\n&]/).every((part) => {
     const w = part.trim().split(/\s+/);
+    // rtk's pi extension rewrites commands to `rtk <cmd>` before spec mode sees them
+    if (w[0] === "rtk") w.splice(0, w[1] === "proxy" ? 2 : 1);
     if (w[0] === "") return true;
     if (w[0] === "git") return GIT_READ.has(w[1]) && !(w[1] === "branch" && w.length > 2);
     if (!READ_ONLY.has(w[0])) return false;

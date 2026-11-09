@@ -219,3 +219,16 @@ test("commands refuse what the current state does not allow", async () => {
   assert.match(h.notes.at(-1)!, /No spec written yet/);
   assert.deepEqual(h.commands.spec.getArgumentCompletions("").map((i: any) => i.value), ["exit", "template", "settings"]);
 });
+
+test("/spec settings says which files exist and reloads a project file created later", async () => {
+  const h = harness();
+  h.ctx.isProjectTrusted = () => true;
+  await h.fire("session_start");
+  await h.commands.spec.handler("settings", h.ctx);
+  assert.match(h.notes.at(-1)!, /project: .*pi-spec-mode\.json \(not found\)/);
+  mkdirSync(join(h.cwd, ".pi"));
+  writeFileSync(join(h.cwd, ".pi/pi-spec-mode.json"), '{ "specsDir": "doc/specs" }');
+  await h.commands.spec.handler("settings", h.ctx);
+  assert.match(h.notes.at(-1)!, /\(found\)/);
+  assert.match(h.notes.at(-1)!, /"specsDir": "doc\/specs"/);
+});

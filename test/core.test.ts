@@ -77,8 +77,10 @@ test("writes stay inside the specs folder", () => {
 });
 
 test("bash: readers pass, anything that writes is refused", () => {
-  for (const c of ["ls -la", "grep -rn foo src | head", "git log --oneline -5", "cat a && wc -l b", "sed -n 1,20p f", "find . -name '*.md'"])
+  for (const c of ["ls -la", "grep -rn foo src | head", "git log --oneline -5", "cat a && wc -l b", "sed -n 1,20p f", "find . -name '*.md'",
+    "rtk ls doc/specs/", "rtk read a.md --head-lines 20", "rtk git log -5", "rtk proxy cat a", "cd /p && git log -5 2>/dev/null | cat", "ls x 2>&1 | head"])
     assert.ok(isReadOnlyCommand(c), c);
-  for (const c of ["rm -rf x", "echo x > f", "sed -i s/a/b/ f", "git commit -m x", "find . -delete", "cat $(whoami)", "npm install", "ls; touch f", "git branch new"])
+  for (const c of ["rm -rf x", "echo x > f", "sed -i s/a/b/ f", "git commit -m x", "find . -delete", "cat $(whoami)", "npm install", "ls; touch f", "git branch new",
+    "rtk npm install", "rtk proxy rm x", "cat a 2> err.log", "ls >/dev/null; echo x > f", "cd /p && rm x"])
     assert.ok(!isReadOnlyCommand(c), c);
 });
