@@ -192,7 +192,19 @@ export default function specMode(pi: ExtensionAPI) {
   }
 
   function showSettings(ctx: ExtensionContext) {
-    notify(ctx, `pi-spec-mode settings (~/.pi/agent/pi-spec-mode.json, .pi/pi-spec-mode.json):\n${JSON.stringify(settings, null, 2)}`);
+    settings = loadSettings(ctx); // pick up a file created since the session started
+    const global = join(getAgentDir(), "pi-spec-mode.json");
+    const project = join(ctx.cwd, ".pi", "pi-spec-mode.json");
+    const state = (f: string) => (existsSync(f) ? "found" : "not found");
+    notify(
+      ctx,
+      [
+        "pi-spec-mode settings — both files are optional; anything they do not set uses the default.",
+        `  global:  ${global} (${state(global)})`,
+        `  project: ${project} (${ctx.isProjectTrusted() ? state(project) : "ignored: project not trusted"})`,
+        `Effective:\n${JSON.stringify(settings, null, 2)}`,
+      ].join("\n"),
+    );
   }
 
   pi.on("session_start", async (_e, ctx) => restore(ctx));
