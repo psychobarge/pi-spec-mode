@@ -1,0 +1,44 @@
+{
+  "name": "pi-spec-mode",
+  "version": "0.0.1-alpha",
+  "description": "Pi extension that adds a /spec mode: write, agree, verify and hand over feature specs.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "spec",
+    "specification"
+  ],
+  "files": [
+    "src",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.5.0",
+    "@types/node": "^26.6.6",
+    "typebox": "^1.4.6",
+    "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/psychobarge/pi-spec-mode.git"
+  },
+  "homepage": "https://github.com/psychobarge/pi-spec-mode#readme"
+}
