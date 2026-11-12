@@ -370,9 +370,11 @@ export default function specMode(pi: ExtensionAPI) {
       const p = String(event.input.path ?? "");
       if (!isInside(settings.specsDir, ctx.cwd, p))
         return { block: true, reason: `Spec mode: files can be created or edited only inside ${settings.specsDir}/.` };
+      const abs = resolve(ctx.cwd, p);
       // A file named `-o` would turn a shell glob like `sort *` into a flag the bash allowlist never saw.
       if (p.split(/[\\/]/).some((s) => s.startsWith("-"))) return { block: true, reason: `Spec mode: file and folder names cannot start with "-".` };
-      const abs = resolve(ctx.cwd, p);
+      // pi rewrites `@x`, `~/x`, `file://…` and (on Windows) `/c/x` before writing: give it the absolute path that was just checked.
+      event.input.path = abs;
       const md = state.mode === "spec" && existsSync(abs) ? readFileSync(abs, "utf8") : "";
       if (getField(md, "Status") === "Agreed") agreedBeforeEdit.set(event.toolCallId, Number(getField(md, "Version")) || 1);
       return;

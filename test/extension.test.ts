@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { test } from "node:test";
 import specMode from "../src/index.ts";
 
@@ -83,6 +83,14 @@ test("tool policy: spec folder writable, everything else refused", async () => {
   assert.equal((await call("write", { path: "src/x.ts", content: "" }))?.block, true);
   assert.equal((await call("edit", { path: "specs/../package.json" }))?.block, true);
   assert.equal((await call("write", { path: "specs/-o", content: "" }))?.block, true);
+  // Paths pi would rewrite after the check: refused, or pinned to the absolute path that was checked.
+  assert.equal((await call("write", { path: "@specs/0001_spec_x.md", content: "" }))?.block, true);
+  for (const path of ["file:///../specs/%2e%2e/../etc/x", "~/../specs/a.md", "@/../specs/a.md"]) {
+    const input = { path, content: "" };
+    assert.equal(await call("write", input), undefined);
+    assert.equal(input.path, resolve(h.cwd, path));
+    assert.ok(input.path.startsWith(join(h.cwd, "specs") + sep));
+  }
   assert.equal(await call("bash", { command: "grep -rn foo ." }), undefined);
   assert.equal((await call("bash", { command: "echo x > specs/a.md" }))?.block, true);
   assert.equal((await call("some_mcp_tool", {}))?.block, true);
