@@ -82,6 +82,7 @@ test("tool policy: spec folder writable, everything else refused", async () => {
   assert.equal(await call("write", { path: "specs/0001_spec_x.md", content: "" }), undefined);
   assert.equal((await call("write", { path: "src/x.ts", content: "" }))?.block, true);
   assert.equal((await call("edit", { path: "specs/../package.json" }))?.block, true);
+  assert.equal((await call("write", { path: "specs/-o", content: "" }))?.block, true);
   assert.equal(await call("bash", { command: "grep -rn foo ." }), undefined);
   assert.equal((await call("bash", { command: "echo x > specs/a.md" }))?.block, true);
   assert.equal((await call("some_mcp_tool", {}))?.block, true);

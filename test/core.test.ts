@@ -70,12 +70,17 @@ test("writes stay inside the specs folder", () => {
 
 test("bash: readers pass, anything that writes is refused", () => {
   for (const c of ["ls -la", "grep -rn foo src | head", "git log --oneline -5", "cat a && wc -l b", "sed -n 1,20p f", "find . -name '*.md'",
-    "rtk ls doc/specs/", "rtk read a.md --head-lines 20", "rtk git log -5", "rtk proxy cat a", "cd /p && git log -5 2>/dev/null | cat", "ls x 2>&1 | head"])
+    "rtk ls doc/specs/", "rtk read a.md --head-lines 20", "rtk git log -5", "rtk proxy cat a", "cd /p && git log -5 2>/dev/null | cat", "ls x 2>&1 | head",
+    "sed -n '5,$p' f", "sort -u a | uniq -c", "head -n 20 f", "tree -L 2", "rg -n -t ts foo src", "fd -e md", "grep -rn -A 3 'a b' src",
+    "git diff --stat HEAD~1", "git status --short", "git log --format=%h -n 3", "jq -r '.name' package.json"])
     assert.ok(isReadOnlyCommand(c), c);
   for (const c of ["rm -rf x", "echo x > f", "sed -i s/a/b/ f", "git commit -m x", "find . -delete", "cat $(whoami)", "npm install", "ls; touch f", "git branch new",
     "rtk npm install", "rtk proxy rm x", "cat a 2> err.log", "ls >/dev/null; echo x > f", "cd /p && rm x",
     "sort -o out a", "sort --output=out a", "tree -o out", "sed -n 'w out' a", "sed 's/a/b/e' a", "git diff --output=out", "git grep -O vim x",
-    "rg --pre rm x .", "fd --exec rm {}", "fd --exec-batch rm", "find . -fls out"])
+    "rg --pre rm x .", "fd --exec rm {}", "fd --exec-batch rm", "find . -fls out",
+    "uniq a.md src/index.ts", "awk -f specs/x.awk", "sort --compress-program=sh f", "sed -n 1p -i f", "file -C -m x", "less -o log f",
+    "sort \"-o\" out a", "sort \\-o out a", "sort ${X:--o} out", "sort $'\\x2do' out", "echo -o; sort $_ out", "sort x$IFS-o out", "sort {-o,out}",
+    "git log --ext-diff", "git -c core.pager=sh log", "rg -z x", "read x", "date -s 12:00"])
     assert.ok(!isReadOnlyCommand(c), c);
 });
 

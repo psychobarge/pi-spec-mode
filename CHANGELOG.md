@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Spec mode's bash filter is now an allowlist: each allowed command accepts only known read flags; `awk` and `less` are no longer allowed. Shell expansions that could produce a flag (`${…}`, `$'…'`, `$VAR`, `{a,b}`) are refused.
+- Spec mode refuses file and folder names starting with `-`.
+
 ## 0.0.1-beta1
 
 - Spec mode refuses read commands whose flags write files or run commands: `sort`/`tree -o`, `git --output`/`-O`, `rg --pre`, `fd --exec`, `find -fls`. `sed` is accepted only as `sed -n '<lines>p'`.

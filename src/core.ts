@@ -103,32 +103,49 @@ export function isInside(dir: string, cwd: string, p: string): boolean {
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
-const READ_ONLY = new Set([
-  "cat", "head", "tail", "less", "grep", "rg", "find", "fd", "ls", "pwd", "echo", "printf", "wc", "sort", "uniq",
-  "diff", "file", "stat", "du", "tree", "which", "date", "basename", "dirname", "realpath", "cut", "tr", "jq", "awk", "sed", "true",
-  "cd", "read", // `read` is what rtk turns cat/head into
-]);
+const NONE = /(?!)/;
+/** Allowlist: the commands spec mode may run and the flags each accepts. Other arguments are files, patterns or flag values. */
+const FLAGS: Record<string, RegExp> = {
+  cat: /^-[nb]$/, head: /^-[nc]?\d*$/, tail: /^-[nc]?\d*$/, ls: /^-[alhRtrSd1AF]+$/, wc: /^-[lwcm]+$/,
+  grep: /^-[rRnilvwcEFhHoqsABC\d]+$|^--(include|exclude|exclude-dir)=/, rg: /^-[nilvwcFSoltgABC\d]+$|^--(type|glob|files|hidden)(=|$)/,
+  find: /^-(name|iname|path|ipath|type|maxdepth|mindepth|newer|size|mtime|empty|not|o|a|or|and|print)$/,
+  fd: /^-[eHItd]$|^--(extension|hidden|type|max-depth)(=|$)/, tree: /^-[Ldaf]$|^-L\d+$/,
+  sort: /^-[nrufk\d,]+$/, uniq: /^-[cdui]+$/, cut: /^-[dfcs]/, tr: /^-[dcs]+$/, diff: /^-[uqrNwb]+$/,
+  stat: /^-[fcLx]/, du: /^-[shdac\d]+$/, file: /^-[biL]+$/, jq: /^-[rcSe]+$/, echo: /^-[neE]+$/, date: /^-u$/,
+  which: /^-a$/, pwd: /^-[LP]$/, cd: /^-[LP]$/, sed: NONE, printf: NONE, basename: NONE, dirname: NONE, realpath: NONE, true: NONE,
+  "rtk read": /^--(head|tail)-lines(=\d+)?$/, // what rtk turns cat/head into
+};
 const GIT_READ = new Set(["status", "log", "diff", "show", "blame", "grep", "ls-files", "rev-parse", "branch"]);
+const GIT_FLAGS = /^-\d+$|^-[nplsiwLb]$|^--(oneline|stat|name-only|name-status|graph|all|short|porcelain|cached|staged|abbrev-ref|show-toplevel)$|^--(format|pretty|since|until|author|grep)=/;
 
-/** Fail-closed: every command of a pipeline/list must be a known reader; no redirection (except to /dev/null) or substitution. */
+/** Fail-closed: every command of a pipeline/list must be on the allowlist with allowed flags; no redirection (except to /dev/null), substitution or expansion. */
 export function isReadOnlyCommand(cmd: string): boolean {
   cmd = cmd.replace(/[0-9&]?>>?\s*\/dev\/null|[0-9]>&[0-9]/g, "");
-  if (/[>`]|\$\(|<\(/.test(cmd)) return false;
+  if (/[>`]|<\(/.test(cmd)) return false;
+  // Expansions can produce a flag the check never saw: `$(…)`, `${X:--o}`, `$'\x2do'`, `$_`, `$IFS` splitting, `{-o,out}`.
+  if (/\$[A-Za-z_{('"]/.test(cmd.replace(/'[^']*'/g, "''")) || /\{[^}]*(,|\.\.)[^}]*\}/.test(cmd)) return false;
   return cmd.split(/\|\||&&|[|;\n&]/).every((part) => {
     const w = part.trim().split(/\s+/);
     // rtk's pi extension rewrites commands to `rtk <cmd>` before spec mode sees them
-    if (w[0] === "rtk") w.splice(0, w[1] === "proxy" ? 2 : 1);
+    const rtk = w[0] === "rtk";
+    if (rtk) w.splice(0, w[1] === "proxy" ? 2 : 1);
     if (w[0] === "") return true;
-    // Flags that write a file (--output, -o) or run a command (-O pager, --pre, --exec) turn a reader into a writer.
-    if (w[0] === "git") return GIT_READ.has(w[1]) && !(w[1] === "branch" && w.length > 2) && !w.some((x) => /^(--output|-O|--open-files-in-pager)/.test(x));
-    if (!READ_ONLY.has(w[0])) return false;
-    // sed scripts can write (`w`) or run commands (`e`) anywhere in them: allow only line printing.
-    if (w[0] === "sed" && !/^sed -n (['"]?)[\d,$]+p\1( |$)/.test(w.join(" "))) return false;
-    if ((w[0] === "sort" || w[0] === "tree") && w.some((x) => /^(-[a-zA-Z]*o|--output)/.test(x))) return false;
-    if (w[0] === "rg" && w.some((x) => /^--pre(=|$)/.test(x))) return false;
-    if ((w[0] === "find" || w[0] === "fd") && w.some((x) => /^(-(exec|execdir|delete|ok|fprint|fls)|--exec)/.test(x) || x === "-x" || x === "-X")) return false;
-    if (w[0] === "awk" && /system|print\s*>|\|/.test(part)) return false;
-    return true;
+    let flags = FLAGS[rtk && w[0] === "read" ? "rtk read" : w[0]];
+    let args = w.slice(1);
+    if (w[0] === "git") {
+      if (!GIT_READ.has(w[1]) || (w[1] === "branch" && w.length > 2)) return false;
+      [flags, args] = [GIT_FLAGS, w.slice(2)];
+    }
+    // sed scripts can write (`w`) or run commands (`e`): only `sed -n '<lines>p' files`.
+    if (w[0] === "sed") {
+      if (w[1] !== "-n" || !/^(['"]?)[\d,$]+p\1$/.test(w[2] ?? "")) return false;
+      args = w.slice(3);
+    }
+    // Quotes and backslashes do not hide a flag: `"-o"` and `\-o` reach the command as `-o`.
+    const bare = args.map((a) => a.replace(/['"\\]/g, ""));
+    // uniq's second file is its output.
+    if (w[0] === "uniq" && bare.filter((a) => !a.startsWith("-")).length > 1) return false;
+    return !!flags && bare.every((a) => !a.startsWith("-") || flags.test(a));
   });
 }
 
