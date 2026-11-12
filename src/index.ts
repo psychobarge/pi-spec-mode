@@ -27,6 +27,7 @@ const SECTION = "spec-mode";
 const MUTEX = "workflow:mutex:v1"; // shared with @narumitw/pi-plan-mode: only one agent workflow at a time
 const READ_TOOLS = new Set(["read", "grep", "find", "ls", "spec_question", "spec_complete"]);
 const BUNDLED_TEMPLATE = fileURLToPath(new URL("../templates/spec_template.md", import.meta.url));
+const USAGE = "/spec start | <request> | agree | refuse [spec] | restore <spec> | verify | implement <spec> | template | exit | settings";
 const DEFAULT_SETTINGS: Settings = { specsDir: "specs", language: "English", verifyCount: 2 };
 
 export default function specMode(pi: ExtensionAPI) {
@@ -257,7 +258,7 @@ export default function specMode(pi: ExtensionAPI) {
   pi.on("session_tree", async (_e, ctx) => restore(ctx));
 
   pi.registerCommand("spec", {
-    description: "Spec mode: /spec start | <request> | agree | refuse [spec] | restore <spec> | verify | implement <spec> | template | exit | settings",
+    description: `Spec mode: ${USAGE}`,
     getArgumentCompletions: (prefix) => {
       // Offer only what the current state accepts.
       const valid =
@@ -275,7 +276,7 @@ export default function specMode(pi: ExtensionAPI) {
 
       switch (sub) {
         case "": {
-          if (!ctx.hasUI) return notify(ctx, "Usage: /spec start | <request> | agree | refuse [spec] | restore <spec> | verify | implement <spec> | template | exit | settings");
+          if (!ctx.hasUI) return notify(ctx, `Usage: ${USAGE}`);
           const options =
             state.mode === "off"
               ? ["Start spec mode", "Verify specs", "Implement a spec", "Refuse a spec", "Restore a refused spec", "Create the project template", "Settings"]
