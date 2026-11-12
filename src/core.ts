@@ -2,39 +2,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
-export type Intent = { kind: "create" | "verify" | "implement"; rest: string };
-
-export interface Triggers {
-  create: string[];
-  verify: string[];
-  implement: string[];
-}
-
-export const DEFAULT_TRIGGERS: Triggers = {
-  create: [
-    "write the spec", "write a spec", "create a spec", "create the spec", "new spec for",
-    "crée une spec", "crée la spec", "créer une spec", "créer la spec", "écris la spec",
-    "écris une spec", "rédige la spec", "rédige une spec", "nouvelle spec",
-  ],
-  verify: ["verify the specs", "check the specs", "vérifie les specs", "vérifier les specs"],
-  implement: ["implement the spec", "implement spec", "implémente la spec", "implémenter la spec", "implémente spec"],
-};
-
-const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-
-/** Implement and verify are checked before create, so "implement the spec" never reads as a create. */
-export function matchTrigger(text: string, triggers: Triggers): Intent | undefined {
-  const folded = fold(text);
-  for (const kind of ["implement", "verify", "create"] as const) {
-    for (const phrase of triggers[kind]) {
-      const i = folded.indexOf(fold(phrase));
-      // `rest` is folded (lowercase, no accents): only used as a spec id, never shown.
-      if (i !== -1) return { kind, rest: folded.slice(i + fold(phrase).length).trim() };
-    }
-  }
-  return undefined;
-}
-
 export const SPEC_FILE = /^(\d{4})_spec_(.+)\.md$/;
 
 export function listSpecs(specsDir: string): string[] {

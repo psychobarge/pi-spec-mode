@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
-  DEFAULT_TRIGGERS, getField, isInside, isReadOnlyCommand, leftovers, matchTrigger, missingSections, nextSpecNumber,
+  getField, isInside, isReadOnlyCommand, leftovers, missingSections, nextSpecNumber,
   resolveSpec, setField, verifyQueue,
 } from "../src/core.ts";
 
@@ -18,15 +18,6 @@ function specsDir(files: Record<string, string>) {
   for (const [f, c] of Object.entries(files)) writeFileSync(join(dir, f), c);
   return dir;
 }
-
-test("triggers: EN/FR, accents, implement before create", () => {
-  assert.equal(matchTrigger("Write the spec for offline mode", DEFAULT_TRIGGERS)?.kind, "create");
-  assert.equal(matchTrigger("crée une spec pour le mode hors ligne", DEFAULT_TRIGGERS)?.kind, "create");
-  assert.equal(matchTrigger("cree une spec", DEFAULT_TRIGGERS)?.kind, "create");
-  assert.equal(matchTrigger("vérifie les specs", DEFAULT_TRIGGERS)?.kind, "verify");
-  assert.deepEqual(matchTrigger("implémente la spec 0003", DEFAULT_TRIGGERS), { kind: "implement", rest: "0003" });
-  assert.equal(matchTrigger("fix the login bug", DEFAULT_TRIGGERS), undefined);
-});
 
 test("numbering counts Implemented/ and never reuses", () => {
   const dir = specsDir({ "0001_spec_a.md": "", "Implemented/0004_spec_b.md": "", "spec_template.md": "" });

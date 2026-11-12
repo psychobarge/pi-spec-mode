@@ -27,8 +27,6 @@ pi -e ./                           # try a local checkout
 | `/spec exit` | Leave spec mode |
 | `/spec settings` | Show the effective settings |
 
-Phrases work too: "write the spec for…", "crée une spec…", "verify the specs", "vérifie les specs", "implement spec 0003", "implémente la spec 0003".
-
 While in spec mode the footer shows `spec-mode` (then `spec-mode 0003 · Draft`); nothing when off. The agent can read the whole project, run only read-only shell commands, and write only inside the specs folder. It asks decisions through `spec_question` and calls `spec_complete` when the spec is ready, which opens an **Agree / Keep discussing / Leave** menu.
 
 Specs live in `specs/NNNN_spec_<feature>.md`; implemented ones move to `specs/Implemented/`.
@@ -50,16 +48,11 @@ copies the generic template to `specs/spec_template.md`. Rename its sections, re
 ```json
 {
   "specsDir": "specs",
-  "language": "English",
-  "triggers": {
-    "create": ["write the spec", "crée une spec"],
-    "verify": ["verify the specs"],
-    "implement": ["implement spec"]
-  }
+  "language": "English"
 }
 ```
 
-`"triggers": false` turns phrase detection off. A `triggers` list replaces the default list of that kind.
+`language` is the language specs are written in, whatever the language of the conversation.
 
 ## Develop
 

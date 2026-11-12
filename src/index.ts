@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import {
-  DEFAULT_TRIGGERS, getField, isInside, isReadOnlyCommand, leftovers, listSpecs, matchTrigger, missingSections,
-  nextSpecNumber, resolveSpec, SPEC_FILE, setField, today, type Triggers, verifyQueue,
+  getField, isInside, isReadOnlyCommand, leftovers, listSpecs, missingSections,
+  nextSpecNumber, resolveSpec, SPEC_FILE, setField, today, verifyQueue,
 } from "./core.ts";
 import { implementRequest, NORMAL_CONTRACT, specContract, verifyContract } from "./prompts.ts";
 
@@ -19,7 +19,6 @@ interface State {
 interface Settings {
   specsDir: string;
   language: string;
-  triggers: Triggers | false;
 }
 
 const STATE_ENTRY = "spec-mode";
@@ -27,7 +26,7 @@ const SECTION = "spec-mode";
 const MUTEX = "workflow:mutex:v1"; // shared with @narumitw/pi-plan-mode: only one agent workflow at a time
 const READ_TOOLS = new Set(["read", "grep", "find", "ls", "spec_question", "spec_complete"]);
 const BUNDLED_TEMPLATE = fileURLToPath(new URL("../templates/spec_template.md", import.meta.url));
-const DEFAULT_SETTINGS: Settings = { specsDir: "specs", language: "English", triggers: DEFAULT_TRIGGERS };
+const DEFAULT_SETTINGS: Settings = { specsDir: "specs", language: "English" };
 
 export default function specMode(pi: ExtensionAPI) {
   let state: State = { mode: "off" };
@@ -58,7 +57,6 @@ export default function specMode(pi: ExtensionAPI) {
       notify(ctx, `pi-spec-mode: specsDir must be a folder inside the project, using "specs"`, "warning");
       s.specsDir = "specs";
     }
-    if (s.triggers) s.triggers = { ...DEFAULT_TRIGGERS, ...s.triggers };
     return s;
   }
 
@@ -276,29 +274,6 @@ export default function specMode(pi: ExtensionAPI) {
         }
       }
     },
-  });
-
-  pi.on("input", async (event, ctx) => {
-    if (event.source === "extension" || !settings.triggers) return;
-    const intent = matchTrigger(event.text, settings.triggers);
-    if (!intent) return;
-    if (intent.kind === "create") {
-      if (state.mode !== "off" || event.streamingBehavior) return;
-      const err = enter(ctx);
-      if (err) {
-        notify(ctx, err, "warning");
-        return { action: "handled" };
-      }
-      return; // the message itself is the spec request, now handled in spec mode
-    }
-    if (event.streamingBehavior) {
-      notify(ctx, "The agent is running: wait or interrupt, then retry.", "warning");
-      return { action: "handled" };
-    }
-    if (intent.kind === "verify") return startVerify(ctx) ? undefined : { action: "handled" };
-    // ponytail: dispatching /plan from inside an input handler is unsupported, so it runs right after; if pi is not idle by then, implement() says so.
-    setTimeout(() => implement(ctx, intent.rest.split(/\s+/)[0] ?? ""), 0);
-    return { action: "handled" };
   });
 
   pi.on("before_agent_start", async (event, ctx) => {

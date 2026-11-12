@@ -61,11 +61,12 @@ function harness(opts: { plan?: boolean; picks?: string[] } = {}) {
 const TEMPLATE = readFileSync(new URL("../templates/spec_template.md", import.meta.url), "utf8");
 const FILLED = readFileSync(new URL("./fixtures/filled_spec.md", import.meta.url), "utf8");
 
-test("trigger phrase enters spec mode, contract and status follow", async () => {
+test("/spec <request> enters spec mode, contract and status follow", async () => {
   const h = harness();
   await h.fire("session_start", { reason: "startup" });
   assert.equal(await h.prompt(), undefined);
-  assert.equal(await h.fire("input", { text: "write the spec for offline mode", source: "interactive" }), undefined);
+  await h.commands.spec.handler("write the spec for offline mode", h.ctx);
+  assert.deepEqual(h.sent.user, ["write the spec for offline mode"]);
   assert.equal(h.status(), "spec-mode");
   const contract = await h.prompt();
   assert.match(contract, /\[PI SPEC MODE CONTRACT v1: SPEC\]/);
