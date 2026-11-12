@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.1-beta1
+
+- Spec mode refuses read commands whose flags write files or run commands: `sort`/`tree -o`, `git --output`/`-O`, `rg --pre`, `fd --exec`, `find -fls`. `sed` is accepted only as `sed -n '<lines>p'`.
+- Spec numbering and lookup work with Windows paths.
+- Editing an Agreed spec bumps `Version` once, even when the edit already bumped it.
+
 ## 0.0.1-alpha3
 
 - `/spec refuse [spec]`: sets a spec to `Refused`, adds a warning line on top and moves it to `specs/Refused/`. Refused specs are kept but skipped by `/spec verify`, `/spec implement` and the agent; their numbers are never reused.
