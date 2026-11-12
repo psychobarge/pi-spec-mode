@@ -33,6 +33,8 @@ Writing the spec:
 - Never set Status to Agreed yourself: only the user agrees a spec.
 - When the spec is complete and every question is answered, call spec_complete with its path, then stop.
 ${c.current ? `\nCurrent spec: \`${c.current}\` — re-read it before every change; the user may edit it by hand.\n` : ""}
+Specs in \`${c.specsDir}/Refused/\` were refused by the user: ignore them, never use or extend them.
+
 Existing specs:
 ${c.specs.length ? c.specs.map((s) => `- ${s}`).join("\n") : "- none"}
 

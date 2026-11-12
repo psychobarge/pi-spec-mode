@@ -5,7 +5,7 @@ import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil
 import { Type } from "typebox";
 import {
   getField, isInside, isReadOnlyCommand, leftovers, listSpecs, missingSections,
-  nextSpecNumber, resolveSpec, SPEC_FILE, setField, today, verifyQueue,
+  nextSpecNumber, refuseSpec, resolveSpec, restoreSpec, SPEC_FILE, setField, sweepRefused, today, verifyQueue,
 } from "./core.ts";
 import { implementRequest, NORMAL_CONTRACT, specContract, verifyContract } from "./prompts.ts";
 
@@ -19,6 +19,7 @@ interface State {
 interface Settings {
   specsDir: string;
   language: string;
+  verifyCount: number;
 }
 
 const STATE_ENTRY = "spec-mode";
@@ -26,7 +27,7 @@ const SECTION = "spec-mode";
 const MUTEX = "workflow:mutex:v1"; // shared with @narumitw/pi-plan-mode: only one agent workflow at a time
 const READ_TOOLS = new Set(["read", "grep", "find", "ls", "spec_question", "spec_complete"]);
 const BUNDLED_TEMPLATE = fileURLToPath(new URL("../templates/spec_template.md", import.meta.url));
-const DEFAULT_SETTINGS: Settings = { specsDir: "specs", language: "English" };
+const DEFAULT_SETTINGS: Settings = { specsDir: "specs", language: "English", verifyCount: 2 };
 
 export default function specMode(pi: ExtensionAPI) {
   let state: State = { mode: "off" };
@@ -56,6 +57,10 @@ export default function specMode(pi: ExtensionAPI) {
     if (typeof s.specsDir !== "string" || !isInside(".", ctx.cwd, s.specsDir)) {
       notify(ctx, `pi-spec-mode: specsDir must be a folder inside the project, using "specs"`, "warning");
       s.specsDir = "specs";
+    }
+    if (!Number.isInteger(s.verifyCount) || s.verifyCount < 1) {
+      notify(ctx, `pi-spec-mode: verifyCount must be a positive integer, using 2`, "warning");
+      s.verifyCount = 2;
     }
     return s;
   }
@@ -107,6 +112,7 @@ export default function specMode(pi: ExtensionAPI) {
     // A verify run never outlives its run: a resumed one goes back to where it started.
     if (state.mode === "verify") state = { mode: state.before ?? "off", spec: state.spec };
     refresh(ctx);
+    sweep(ctx);
   }
 
   // Answer other workflows (plan mode) asking whether the session is free.
@@ -161,9 +167,10 @@ export default function specMode(pi: ExtensionAPI) {
   /** Puts the session in a verify run; the caller sends the message that starts it. */
   function startVerify(ctx: ExtensionContext): boolean {
     if (state.mode === "verify") return notify(ctx, "A verify run is already in progress.", "warning"), false;
-    const targets = verifyQueue(specsAbs(ctx), today());
+    sweep(ctx);
+    const targets = verifyQueue(specsAbs(ctx), today(), settings.verifyCount);
     if (!listSpecs(specsAbs(ctx)).length) return notify(ctx, `No specs in ${settings.specsDir}/ to verify.`), false;
-    if (!targets.length) return notify(ctx, "The two oldest specs were already verified today: nothing to do."), false;
+    if (!targets.length) return notify(ctx, `The ${settings.verifyCount} oldest specs were already verified today: nothing to do.`), false;
     if (state.mode === "off" && otherWorkflowActive(ctx))
       return notify(ctx, "Plan mode (or another workflow) is active: exit it before verifying specs.", "warning"), false;
     save(ctx, { mode: "verify", before: state.mode as "off" | "spec", spec: state.spec, targets: targets.map((t) => rel(ctx, t)) });
@@ -189,6 +196,47 @@ export default function specMode(pi: ExtensionAPI) {
     }
   }
 
+  /** Moves a spec to Refused/: kept for later, ignored by verify and the agent. Defaults to the spec being written. */
+  function refuse(ctx: ExtensionContext, arg: string) {
+    if (state.mode === "verify") return notify(ctx, "A spec verify run is in progress.", "warning");
+    const p = arg.trim() ? resolveSpec(specsAbs(ctx), arg) : state.spec && resolve(ctx.cwd, state.spec);
+    if (!p || !existsSync(p)) return notify(ctx, arg.trim() ? `No spec "${arg}" in ${settings.specsDir}/` : "Which spec? /spec refuse <number or name>", "warning");
+    if (basename(dirname(p)) === "Implemented") return notify(ctx, `${rel(ctx, p)} is already implemented.`, "warning");
+    let dest: string;
+    try {
+      dest = refuseSpec(specsAbs(ctx), p, today());
+    } catch (e) {
+      return notify(ctx, `Cannot refuse ${rel(ctx, p)}: ${(e as Error).message}`, "error");
+    }
+    if (state.spec && resolve(ctx.cwd, state.spec) === p) save(ctx, { ...state, spec: undefined });
+    notify(ctx, `${basename(p).slice(0, 4)} refused, moved to ${rel(ctx, dest)}`);
+  }
+
+  /** Brings a refused spec back to the specs folder as Draft. */
+  function restoreRefused(ctx: ExtensionContext, arg: string) {
+    if (state.mode === "verify") return notify(ctx, "A spec verify run is in progress.", "warning");
+    if (!arg.trim()) return notify(ctx, "Which spec? /spec restore <number or name>", "warning");
+    const p = resolveSpec(specsAbs(ctx), arg, true);
+    if (!p || basename(dirname(p)) !== "Refused") return notify(ctx, `No refused spec "${arg}" in ${settings.specsDir}/Refused/`, "warning");
+    try {
+      notify(ctx, `${basename(p).slice(0, 4)} restored as Draft to ${rel(ctx, restoreSpec(specsAbs(ctx), p))}`);
+    } catch (e) {
+      notify(ctx, `Cannot restore ${rel(ctx, p)}: ${(e as Error).message}`, "error");
+    }
+  }
+
+  /** A spec set to Refused by hand or by the agent is moved like /spec refuse would. */
+  function sweep(ctx: ExtensionContext) {
+    try {
+      for (const p of sweepRefused(specsAbs(ctx), today())) {
+        if (state.spec && basename(state.spec) === basename(p)) save(ctx, { ...state, spec: undefined });
+        notify(ctx, `${basename(p).slice(0, 4)} is Refused: moved to ${rel(ctx, p)}`);
+      }
+    } catch (e) {
+      notify(ctx, `pi-spec-mode: could not move a refused spec: ${(e as Error).message}`, "warning");
+    }
+  }
+
   function showSettings(ctx: ExtensionContext) {
     settings = loadSettings(ctx); // pick up a file created since the session started
     const global = join(getAgentDir(), "pi-spec-mode.json");
@@ -209,12 +257,12 @@ export default function specMode(pi: ExtensionAPI) {
   pi.on("session_tree", async (_e, ctx) => restore(ctx));
 
   pi.registerCommand("spec", {
-    description: "Spec mode: /spec start | <request> | agree | verify | implement <spec> | template | exit | settings",
+    description: "Spec mode: /spec start | <request> | agree | refuse [spec] | restore <spec> | verify | implement <spec> | template | exit | settings",
     getArgumentCompletions: (prefix) => {
       // Offer only what the current state accepts.
       const valid =
-        state.mode === "off" ? ["start", "verify", "implement", "template", "settings"]
-        : state.mode === "spec" ? [...(state.spec ? ["agree"] : []), "exit", "template", "settings"]
+        state.mode === "off" ? ["start", "verify", "implement", "refuse", "restore", "template", "settings"]
+        : state.mode === "spec" ? [...(state.spec ? ["agree"] : []), "refuse", "exit", "template", "settings"]
         : ["settings"];
       const items = valid.filter((s) => s.startsWith(prefix));
       return items.length ? items.map((value) => ({ value, label: value })) : null;
@@ -227,11 +275,11 @@ export default function specMode(pi: ExtensionAPI) {
 
       switch (sub) {
         case "": {
-          if (!ctx.hasUI) return notify(ctx, "Usage: /spec start | <request> | agree | verify | implement <spec> | template | exit | settings");
+          if (!ctx.hasUI) return notify(ctx, "Usage: /spec start | <request> | agree | refuse [spec] | restore <spec> | verify | implement <spec> | template | exit | settings");
           const options =
             state.mode === "off"
-              ? ["Start spec mode", "Verify specs", "Implement a spec", "Create the project template", "Settings"]
-              : [...(state.spec ? ["Agree the spec"] : []), "Leave spec mode", "Settings"];
+              ? ["Start spec mode", "Verify specs", "Implement a spec", "Refuse a spec", "Restore a refused spec", "Create the project template", "Settings"]
+              : [...(state.spec ? ["Agree the spec", "Refuse the spec"] : []), "Leave spec mode", "Settings"];
           const pick = await ctx.ui.select("Spec mode", options);
           if (pick === "Start spec mode") return idle ? void enter(ctx) : busy();
           if (pick === "Verify specs") return idle ? (startVerify(ctx) ? pi.sendUserMessage("Verify the specs.") : undefined) : busy();
@@ -239,6 +287,12 @@ export default function specMode(pi: ExtensionAPI) {
             const which = await ctx.ui.input("Spec number or name:", "0001");
             return which ? implement(ctx, which) : undefined;
           }
+          if (pick === "Refuse a spec" || pick === "Restore a refused spec") {
+            const which = await ctx.ui.input("Spec number or name:", "0001");
+            if (!which) return;
+            return idle ? (pick === "Refuse a spec" ? refuse(ctx, which) : restoreRefused(ctx, which)) : busy();
+          }
+          if (pick === "Refuse the spec") return idle ? refuse(ctx, "") : busy();
           if (pick === "Agree the spec") return idle ? agree(ctx) : busy();
           if (pick === "Leave spec mode") return idle ? exit(ctx) : busy();
           if (pick === "Create the project template") return createTemplate(ctx);
@@ -261,6 +315,10 @@ export default function specMode(pi: ExtensionAPI) {
           return;
         case "implement":
           return implement(ctx, rest);
+        case "refuse":
+          return idle ? refuse(ctx, rest) : busy();
+        case "restore":
+          return idle ? restoreRefused(ctx, rest) : busy();
         case "template":
           return createTemplate(ctx);
         case "settings":
@@ -286,6 +344,7 @@ export default function specMode(pi: ExtensionAPI) {
       sections[SECTION] = verifyContract(settings.specsDir, today(), state.targets ?? []);
       return;
     }
+    sweep(ctx);
     const specs = listSpecs(specsAbs(ctx)).map((p) => `${rel(ctx, p)} — ${getField(readFileSync(p, "utf8"), "Status") ?? "?"}`);
     sections[SECTION] = specContract({
       specsDir: settings.specsDir,
@@ -319,6 +378,8 @@ export default function specMode(pi: ExtensionAPI) {
     if (state.mode === "off" || (event.toolName !== "write" && event.toolName !== "edit") || event.isError) return;
     const p = rel(ctx, String(event.input.path ?? ""));
     if (!SPEC_FILE.test(basename(p)) || !isInside(settings.specsDir, ctx.cwd, p)) return;
+    // Refused wins over the "changed Agreed spec goes back to Draft" rule.
+    if (getField(readFileSync(resolve(ctx.cwd, p), "utf8"), "Status") === "Refused") return agreedBeforeEdit.delete(event.toolCallId), sweep(ctx);
     if (agreedBeforeEdit.delete(event.toolCallId)) {
       // Rule: a changed Agreed spec must be agreed again.
       const abs = resolve(ctx.cwd, p);

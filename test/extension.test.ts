@@ -113,7 +113,7 @@ test("agree refused while template text is left", async () => {
   await h.fire("tool_result", { toolName: "write", toolCallId: "w", input: { path: "specs/0001_spec_x.md" }, isError: false });
   await h.commands.spec.handler("agree", h.ctx);
   assert.match(h.notes.at(-1)!, /Cannot agree/);
-  assert.equal(h.status(), "spec-mode 0001 · Draft / Agreed / Implemented");
+  assert.equal(h.status(), "spec-mode 0001 · Draft / Agreed / Implemented / Refused");
 });
 
 test("editing an Agreed spec puts it back to Draft and bumps Version", async () => {
@@ -212,13 +212,13 @@ test("commands refuse what the current state does not allow", async () => {
   assert.match(h.notes.at(-1)!, /not on/);
   await h.commands.spec.handler("agree", h.ctx);
   assert.match(h.notes.at(-1)!, /not on/);
-  assert.deepEqual(h.commands.spec.getArgumentCompletions("").map((i: any) => i.value), ["start", "verify", "implement", "template", "settings"]);
+  assert.deepEqual(h.commands.spec.getArgumentCompletions("").map((i: any) => i.value), ["start", "verify", "implement", "refuse", "restore", "template", "settings"]);
   await h.commands.spec.handler("start", h.ctx);
   await h.commands.spec.handler("start", h.ctx);
   assert.match(h.notes.at(-1)!, /already on/);
   await h.commands.spec.handler("agree", h.ctx);
   assert.match(h.notes.at(-1)!, /No spec written yet/);
-  assert.deepEqual(h.commands.spec.getArgumentCompletions("").map((i: any) => i.value), ["exit", "template", "settings"]);
+  assert.deepEqual(h.commands.spec.getArgumentCompletions("").map((i: any) => i.value), ["refuse", "exit", "template", "settings"]);
 });
 
 test("/spec settings says which files exist and reloads a project file created later", async () => {
@@ -232,4 +232,21 @@ test("/spec settings says which files exist and reloads a project file created l
   await h.commands.spec.handler("settings", h.ctx);
   assert.match(h.notes.at(-1)!, /\(found\)/);
   assert.match(h.notes.at(-1)!, /"specsDir": "doc\/specs"/);
+});
+
+test("agent setting an Agreed spec to Refused moves it instead of resetting it to Draft", async () => {
+  const h = harness();
+  await h.fire("session_start");
+  await h.commands.spec.handler("start", h.ctx);
+  mkdirSync(join(h.cwd, "specs"));
+  const p = join(h.cwd, "specs/0001_spec_a.md");
+  writeFileSync(p, FILLED.replace("| Status | Draft |", "| Status | Agreed |"));
+  const input = { path: "specs/0001_spec_a.md" };
+  await h.fire("tool_call", { toolName: "edit", toolCallId: "t1", input });
+  writeFileSync(p, FILLED.replace("| Status | Draft |", "| Status | Refused |"));
+  await h.fire("tool_result", { toolName: "edit", toolCallId: "t1", input, isError: false });
+  const moved = readFileSync(join(h.cwd, "specs/Refused/0001_spec_a.md"), "utf8");
+  assert.match(moved, /^> \*\*REFUSED on/);
+  assert.match(moved, /\| Status \| Refused \|/);
+  assert.doesNotMatch(await h.prompt(), /0001_spec_a\.md —/);
 });

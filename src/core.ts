@@ -1,12 +1,13 @@
 // Pure helpers: no pi imports, so `node --test` can load them directly.
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 export const SPEC_FILE = /^(\d{4})_spec_(.+)\.md$/;
 
-export function listSpecs(specsDir: string): string[] {
+/** Refused specs (in `Refused/`) are left out unless asked for: only numbering needs them. */
+export function listSpecs(specsDir: string, withRefused = false): string[] {
   const out: string[] = [];
-  for (const dir of [specsDir, join(specsDir, "Implemented")]) {
+  for (const dir of [specsDir, join(specsDir, "Implemented"), ...(withRefused ? [join(specsDir, "Refused")] : [])]) {
     if (!existsSync(dir)) continue;
     for (const f of readdirSync(dir)) if (SPEC_FILE.test(f)) out.push(join(dir, f));
   }
@@ -14,15 +15,15 @@ export function listSpecs(specsDir: string): string[] {
 }
 
 export function nextSpecNumber(specsDir: string): string {
-  const max = listSpecs(specsDir).reduce((m, p) => Math.max(m, Number(p.split("/").pop()!.slice(0, 4))), 0);
+  const max = listSpecs(specsDir, true).reduce((m, p) => Math.max(m, Number(p.split("/").pop()!.slice(0, 4))), 0);
   return String(max + 1).padStart(4, "0");
 }
 
 /** Accepts `NNNN`, `NNNN_spec_xxx.md`, `spec_xxx.md`, `xxx`. */
-export function resolveSpec(specsDir: string, arg: string): string | undefined {
+export function resolveSpec(specsDir: string, arg: string, withRefused = false): string | undefined {
   const a = arg.trim().replace(/\.md$/, "").replace(/^spec_/, "");
   if (!a) return undefined;
-  return listSpecs(specsDir).find((p) => {
+  return listSpecs(specsDir, withRefused).find((p) => {
     const m = SPEC_FILE.exec(p.split("/").pop()!)!;
     return a === m[1] || a === `${m[1]}_spec_${m[2]}` || a === m[2] || (/^\d{1,4}$/.test(a) && Number(a) === Number(m[1]));
   });
@@ -57,12 +58,44 @@ export function missingSections(spec: string, template: string): string[] {
   return heads(template).filter((h) => !have.has(h));
 }
 
-/** The two specs verified longest ago: empty date first, ties by path. Empty array when both are already today. */
-export function verifyQueue(specsDir: string, today: string): string[] {
+/** The `count` specs verified longest ago: empty date first, ties by path. Empty array when all are already today. */
+export function verifyQueue(specsDir: string, today: string, count = 2): string[] {
   const rows = listSpecs(specsDir).map((p) => ({ p, d: getField(readFileSync(p, "utf8"), "Last verified") ?? "" }));
   rows.sort((a, b) => a.d.localeCompare(b.d) || a.p.localeCompare(b.p));
-  const pick = rows.slice(0, 2);
+  const pick = rows.slice(0, count);
   return pick.every((r) => r.d === today) ? [] : pick.map((r) => r.p);
+}
+
+export const REFUSED_BANNER = (date: string) =>
+  `> **REFUSED on ${date}: ignore this spec.** Kept for reference only; it is not a requirement: do not implement, verify or extend it.`;
+
+/** Sets Status to Refused, puts the banner on top and moves the spec to `Refused/`. Returns the new path. */
+export function refuseSpec(specsDir: string, path: string, date: string): string {
+  const dest = join(specsDir, "Refused", basename(path));
+  if (existsSync(dest)) throw new Error(`${dest} already exists`);
+  mkdirSync(join(specsDir, "Refused"), { recursive: true });
+  const md = setField(stripBanner(readFileSync(path, "utf8")), "Status", "Refused");
+  writeFileSync(path, `${REFUSED_BANNER(date)}\n\n${md}`);
+  renameSync(path, dest);
+  return dest;
+}
+
+const stripBanner = (md: string) => md.replace(/^> \*\*REFUSED on [^\n]*\n\n?/, "");
+
+/** Undoes refuseSpec: back to the specs folder as Draft, to be agreed again. Returns the new path. */
+export function restoreSpec(specsDir: string, path: string): string {
+  const dest = join(specsDir, basename(path));
+  if (existsSync(dest)) throw new Error(`${dest} already exists`);
+  writeFileSync(path, setField(stripBanner(readFileSync(path, "utf8")), "Status", "Draft"));
+  renameSync(path, dest);
+  return dest;
+}
+
+/** Moves to `Refused/` the specs whose Status was set to Refused by hand (or by the agent). Returns the new paths. */
+export function sweepRefused(specsDir: string, date: string): string[] {
+  return listSpecs(specsDir)
+    .filter((p) => getField(readFileSync(p, "utf8"), "Status") === "Refused")
+    .map((p) => refuseSpec(specsDir, p, date));
 }
 
 export function isInside(dir: string, cwd: string, p: string): boolean {

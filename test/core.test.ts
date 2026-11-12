@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
   getField, isInside, isReadOnlyCommand, leftovers, missingSections, nextSpecNumber,
-  resolveSpec, setField, verifyQueue,
+  refuseSpec, resolveSpec, restoreSpec, setField, sweepRefused, verifyQueue,
 } from "../src/core.ts";
 
 const template = readFileSync(new URL("../templates/spec_template.md", import.meta.url), "utf8");
@@ -56,6 +56,7 @@ test("verify queue: empty date first, ties by path, nothing when both done today
   assert.deepEqual(verifyQueue(dir, "2026-11-09").map((p) => p.split("/").pop()), ["0002_spec_b.md", "0003_spec_c.md"]);
   const done = specsDir({ "0001_spec_a.md": spec("Draft", "2026-11-09"), "0002_spec_b.md": spec("Draft", "2026-11-09") });
   assert.deepEqual(verifyQueue(done, "2026-11-09"), []);
+  assert.deepEqual(verifyQueue(dir, "2026-11-09", 1).map((p) => p.split("/").pop()), ["0002_spec_b.md"]);
 });
 
 test("writes stay inside the specs folder", () => {
@@ -74,4 +75,25 @@ test("bash: readers pass, anything that writes is refused", () => {
   for (const c of ["rm -rf x", "echo x > f", "sed -i s/a/b/ f", "git commit -m x", "find . -delete", "cat $(whoami)", "npm install", "ls; touch f", "git branch new",
     "rtk npm install", "rtk proxy rm x", "cat a 2> err.log", "ls >/dev/null; echo x > f", "cd /p && rm x"])
     assert.ok(!isReadOnlyCommand(c), c);
+});
+
+test("refused spec: banner, status, moved, skipped by verify but still numbered", () => {
+  const dir = specsDir({ "0001_spec_a.md": spec("Draft", ""), "0002_spec_b.md": spec("Draft", "2026-01-01") });
+  const dest = refuseSpec(dir, join(dir, "0001_spec_a.md"), "2026-11-12");
+  assert.ok(dest.endsWith("Refused/0001_spec_a.md") && !existsSync(join(dir, "0001_spec_a.md")));
+  const md = readFileSync(dest, "utf8");
+  assert.match(md, /^> \*\*REFUSED on 2026-11-12/);
+  assert.equal(getField(md, "Status"), "Refused");
+  assert.deepEqual(verifyQueue(dir, "2026-11-12").map((p) => p.split("/").pop()), ["0002_spec_b.md"]);
+  assert.equal(resolveSpec(dir, "a"), undefined);
+  assert.equal(nextSpecNumber(dir), "0003");
+});
+
+test("refused spec: restore undoes it, a hand-set Refused status is swept", () => {
+  const dir = specsDir({ "0001_spec_a.md": spec("Agreed", ""), "0002_spec_b.md": spec("Refused", "") });
+  const back = restoreSpec(dir, refuseSpec(dir, join(dir, "0001_spec_a.md"), "2026-11-12"));
+  assert.equal(readFileSync(back, "utf8"), spec("Draft", ""));
+  assert.ok(resolveSpec(dir, "a"));
+  assert.deepEqual(sweepRefused(dir, "2026-11-12").map((p) => p.split("/").slice(-2).join("/")), ["Refused/0002_spec_b.md"]);
+  assert.ok(resolveSpec(dir, "b", true)?.includes("Refused"));
 });
