@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.0.1-beta2
 
 - Spec mode's bash filter is now an allowlist: each allowed command accepts only known read flags; `awk` and `less` are no longer allowed. Shell expansions that could produce a flag (`${…}`, `$'…'`, `$VAR`, `{a,b}`) are refused.
 - Spec mode refuses file and folder names starting with `-`.
+- `/spec agree` refuses a spec whose `Status` header row is missing, instead of reporting it agreed.
+- README: npm, license, pi and node badges.
 
 ## 0.0.1-beta1
 
