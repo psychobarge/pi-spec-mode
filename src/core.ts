@@ -15,7 +15,7 @@ export function listSpecs(specsDir: string, withRefused = false): string[] {
 }
 
 export function nextSpecNumber(specsDir: string): string {
-  const max = listSpecs(specsDir, true).reduce((m, p) => Math.max(m, Number(p.split("/").pop()!.slice(0, 4))), 0);
+  const max = listSpecs(specsDir, true).reduce((m, p) => Math.max(m, Number(basename(p).slice(0, 4))), 0);
   return String(max + 1).padStart(4, "0");
 }
 
@@ -24,7 +24,7 @@ export function resolveSpec(specsDir: string, arg: string, withRefused = false):
   const a = arg.trim().replace(/\.md$/, "").replace(/^spec_/, "");
   if (!a) return undefined;
   return listSpecs(specsDir, withRefused).find((p) => {
-    const m = SPEC_FILE.exec(p.split("/").pop()!)!;
+    const m = SPEC_FILE.exec(basename(p))!;
     return a === m[1] || a === `${m[1]}_spec_${m[2]}` || a === m[2] || (/^\d{1,4}$/.test(a) && Number(a) === Number(m[1]));
   });
 }
