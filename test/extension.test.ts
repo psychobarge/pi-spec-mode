@@ -117,6 +117,17 @@ test("agree refused while template text is left", async () => {
   assert.equal(h.status(), "spec-mode 0001 · Draft / Agreed / Implemented / Refused");
 });
 
+test("agree refused when the Status row is gone", async () => {
+  const h = harness();
+  await h.fire("session_start");
+  await h.commands.spec.handler("start", h.ctx);
+  mkdirSync(join(h.cwd, "specs"));
+  writeFileSync(join(h.cwd, "specs/0001_spec_x.md"), FILLED.replace(/^\| Status \|.*\n/m, ""));
+  await h.fire("tool_result", { toolName: "write", toolCallId: "w", input: { path: "specs/0001_spec_x.md" }, isError: false });
+  await h.commands.spec.handler("agree", h.ctx);
+  assert.match(h.notes.at(-1)!, /Cannot agree[\s\S]*missing header row "Status"/);
+});
+
 test("editing an Agreed spec puts it back to Draft and bumps Version", async () => {
   const h = harness();
   await h.fire("session_start");

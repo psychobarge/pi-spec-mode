@@ -160,6 +160,7 @@ export default function specMode(pi: ExtensionAPI) {
     const md = readFileSync(p, "utf8");
     const tpl = template(ctx);
     const problems = [...missingSections(md, tpl).map((h) => `missing section "${h}"`), ...leftovers(md, tpl)];
+    if (getField(md, "Status") === undefined) problems.push(`missing header row "Status"`); // setField would silently do nothing
     if (problems.length) return notify(ctx, `Cannot agree ${rel(ctx, p)}:\n- ${problems.join("\n- ")}`, "error");
     writeFileSync(p, setField(md, "Status", "Agreed"));
     exit(ctx, `${basename(p).slice(0, 4)} agreed`);
