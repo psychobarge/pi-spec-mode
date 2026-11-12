@@ -73,7 +73,9 @@ test("bash: readers pass, anything that writes is refused", () => {
     "rtk ls doc/specs/", "rtk read a.md --head-lines 20", "rtk git log -5", "rtk proxy cat a", "cd /p && git log -5 2>/dev/null | cat", "ls x 2>&1 | head"])
     assert.ok(isReadOnlyCommand(c), c);
   for (const c of ["rm -rf x", "echo x > f", "sed -i s/a/b/ f", "git commit -m x", "find . -delete", "cat $(whoami)", "npm install", "ls; touch f", "git branch new",
-    "rtk npm install", "rtk proxy rm x", "cat a 2> err.log", "ls >/dev/null; echo x > f", "cd /p && rm x"])
+    "rtk npm install", "rtk proxy rm x", "cat a 2> err.log", "ls >/dev/null; echo x > f", "cd /p && rm x",
+    "sort -o out a", "sort --output=out a", "tree -o out", "sed -n 'w out' a", "sed 's/a/b/e' a", "git diff --output=out", "git grep -O vim x",
+    "rg --pre rm x .", "fd --exec rm {}", "fd --exec-batch rm", "find . -fls out"])
     assert.ok(!isReadOnlyCommand(c), c);
 });
 

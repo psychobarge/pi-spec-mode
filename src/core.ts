@@ -119,10 +119,14 @@ export function isReadOnlyCommand(cmd: string): boolean {
     // rtk's pi extension rewrites commands to `rtk <cmd>` before spec mode sees them
     if (w[0] === "rtk") w.splice(0, w[1] === "proxy" ? 2 : 1);
     if (w[0] === "") return true;
-    if (w[0] === "git") return GIT_READ.has(w[1]) && !(w[1] === "branch" && w.length > 2);
+    // Flags that write a file (--output, -o) or run a command (-O pager, --pre, --exec) turn a reader into a writer.
+    if (w[0] === "git") return GIT_READ.has(w[1]) && !(w[1] === "branch" && w.length > 2) && !w.some((x) => /^(--output|-O|--open-files-in-pager)/.test(x));
     if (!READ_ONLY.has(w[0])) return false;
-    if (w[0] === "sed" && w.some((x) => /^-[a-z]*i/.test(x) || x === "--in-place")) return false;
-    if ((w[0] === "find" || w[0] === "fd") && w.some((x) => /^-(exec|execdir|delete|ok|fprint)/.test(x) || x === "-x" || x === "-X")) return false;
+    // sed scripts can write (`w`) or run commands (`e`) anywhere in them: allow only line printing.
+    if (w[0] === "sed" && !/^sed -n (['"]?)[\d,$]+p\1( |$)/.test(w.join(" "))) return false;
+    if ((w[0] === "sort" || w[0] === "tree") && w.some((x) => /^(-[a-zA-Z]*o|--output)/.test(x))) return false;
+    if (w[0] === "rg" && w.some((x) => /^--pre(=|$)/.test(x))) return false;
+    if ((w[0] === "find" || w[0] === "fd") && w.some((x) => /^(-(exec|execdir|delete|ok|fprint|fls)|--exec)/.test(x) || x === "-x" || x === "-X")) return false;
     if (w[0] === "awk" && /system|print\s*>|\|/.test(part)) return false;
     return true;
   });
