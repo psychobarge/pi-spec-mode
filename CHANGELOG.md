@@ -6,6 +6,7 @@
 - Only `/spec agree` makes a spec `Agreed`: a spec the agent sets to `Agreed` goes back to `Draft`, in spec mode and during `/spec verify`.
 - `/spec verify`: an `Agreed` spec whose content changes goes back to `Draft`; stamping `Last verified` alone keeps it `Agreed`.
 - The agent cannot change `specs/spec_template.md` in spec mode or during `/spec verify`.
+- A project whose own path contains a folder starting with `-` can write specs again.
 
 ## 0.0.1-beta2
 

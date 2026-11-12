@@ -338,3 +338,17 @@ test("verify run: stamping an Agreed spec keeps it Agreed, changing it or self-a
   // Draft → Agreed by the agent: back to Draft.
   assert.match(await edit(b, "v4", AGREED), /\| Status \| Draft \|/);
 });
+
+test("a project whose own path has a folder starting with - can still write specs", async () => {
+  const h = harness();
+  const cwd = join(h.cwd, "-perso", "app");
+  mkdirSync(cwd, { recursive: true });
+  h.ctx.cwd = cwd;
+  await h.fire("session_start");
+  await h.commands.spec.handler("start", h.ctx);
+  const call = (path: string) => h.fire("tool_call", { toolName: "write", toolCallId: "t", input: { path, content: "" } });
+  assert.equal(await call(join(cwd, "specs/0001_spec_x.md")), undefined);
+  assert.equal(await call("../../-perso/app/specs/0001_spec_x.md"), undefined);
+  assert.equal((await call(join(cwd, "specs/-o")))?.block, true);
+  assert.equal((await call("specs/-dir/0001_spec_x.md"))?.block, true);
+});
