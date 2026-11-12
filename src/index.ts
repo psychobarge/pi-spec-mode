@@ -373,6 +373,9 @@ export default function specMode(pi: ExtensionAPI) {
       const abs = resolve(ctx.cwd, p);
       // A file named `-o` would turn a shell glob like `sort *` into a flag the bash allowlist never saw.
       if (p.split(/[\\/]/).some((s) => s.startsWith("-"))) return { block: true, reason: `Spec mode: file and folder names cannot start with "-".` };
+      // /spec agree checks a spec against the template: the agent must not be able to weaken it. Lower-cased: macOS and Windows ignore case.
+      if (abs.toLowerCase() === localTemplate(ctx).toLowerCase())
+        return { block: true, reason: `Spec mode: ${rel(ctx, abs)} is the user's template and cannot be changed in spec mode. Ask the user to edit it.` };
       // pi rewrites `@x`, `~/x`, `file://…` and (on Windows) `/c/x` before writing: give it the absolute path that was just checked.
       event.input.path = abs;
       beforeEdit.set(event.toolCallId, existsSync(abs) ? readFileSync(abs, "utf8") : "");

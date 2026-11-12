@@ -59,7 +59,7 @@ The [bundled template](templates/spec_template.md) is deliberately generic. Spec
 /spec template
 ```
 
-copies the generic template to `specs/spec_template.md`. Rename its sections, rewrite the italic hints for your domain, delete what never applies. Spec mode uses the project's template whenever it exists, and warns you each time it falls back to the generic one. Agreeing a spec checks it against the template's own sections, so any section layout works.
+copies the generic template to `specs/spec_template.md`. Rename its sections, rewrite the italic hints for your domain, delete what never applies. Spec mode uses the project's template whenever it exists, and warns you each time it falls back to the generic one. Agreeing a spec checks it against the template's own sections, so any section layout works. The agent cannot change the template in spec mode or during `/spec verify`: edit it yourself, or ask the agent outside spec mode.
 
 ## Settings
 

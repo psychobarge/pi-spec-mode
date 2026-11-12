@@ -91,6 +91,9 @@ test("tool policy: spec folder writable, everything else refused", async () => {
     assert.equal(input.path, resolve(h.cwd, path));
     assert.ok(input.path.startsWith(join(h.cwd, "specs") + sep));
   }
+  // The template is the user's: /spec agree relies on it.
+  assert.equal((await call("write", { path: "specs/spec_template.md", content: "" }))?.block, true);
+  assert.equal((await call("edit", { path: "specs/SPEC_TEMPLATE.md" }))?.block, true);
   assert.equal(await call("bash", { command: "grep -rn foo ." }), undefined);
   assert.equal((await call("bash", { command: "echo x > specs/a.md" }))?.block, true);
   assert.equal((await call("some_mcp_tool", {}))?.block, true);
