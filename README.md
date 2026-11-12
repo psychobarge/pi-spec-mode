@@ -1,5 +1,10 @@
 # pi-spec-mode
 
+[![npm version](https://img.shields.io/npm/v/pi-spec-mode)](https://www.npmjs.com/package/pi-spec-mode)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![pi extension](https://img.shields.io/badge/pi-extension-8A2BE2)](https://pi.dev)
+[![node](https://img.shields.io/badge/node-%3E%3D22.19-339933)](https://nodejs.org)
+
 A [pi](https://pi.dev) extension that adds a **spec mode**: write a feature spec with the agent, agree it, keep it true to the code, and hand it to plan mode to build.
 
 A spec says what a feature is and how it behaves; it never describes code.
