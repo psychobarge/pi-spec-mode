@@ -34,7 +34,7 @@ export default function specMode(pi: ExtensionAPI) {
   let settings = DEFAULT_SETTINGS;
   let session: object | undefined;
   let completeRequested = false;
-  const agreedBeforeEdit = new Set<string>(); // toolCallIds editing an Agreed spec
+  const agreedBeforeEdit = new Map<string, number>(); // toolCallId editing an Agreed spec → its Version before the edit
 
   const specsAbs = (ctx: ExtensionContext) => resolve(ctx.cwd, settings.specsDir);
   const rel = (ctx: ExtensionContext, p: string) => relative(ctx.cwd, resolve(ctx.cwd, p));
@@ -368,7 +368,9 @@ export default function specMode(pi: ExtensionAPI) {
       const p = String(event.input.path ?? "");
       if (!isInside(settings.specsDir, ctx.cwd, p))
         return { block: true, reason: `Spec mode: files can be created or edited only inside ${settings.specsDir}/.` };
-      if (state.mode === "spec" && specStatus(ctx, p) === "Agreed") agreedBeforeEdit.add(event.toolCallId);
+      const abs = resolve(ctx.cwd, p);
+      const md = state.mode === "spec" && existsSync(abs) ? readFileSync(abs, "utf8") : "";
+      if (getField(md, "Status") === "Agreed") agreedBeforeEdit.set(event.toolCallId, Number(getField(md, "Version")) || 1);
       return;
     }
     return { block: true, reason: `Spec mode: the ${event.toolName} tool is not available. Leave spec mode (/spec exit) to use it.` };
@@ -380,12 +382,14 @@ export default function specMode(pi: ExtensionAPI) {
     if (!SPEC_FILE.test(basename(p)) || !isInside(settings.specsDir, ctx.cwd, p)) return;
     // Refused wins over the "changed Agreed spec goes back to Draft" rule.
     if (getField(readFileSync(resolve(ctx.cwd, p), "utf8"), "Status") === "Refused") return agreedBeforeEdit.delete(event.toolCallId), sweep(ctx);
+    const version = agreedBeforeEdit.get(event.toolCallId);
     if (agreedBeforeEdit.delete(event.toolCallId)) {
       // Rule: a changed Agreed spec must be agreed again.
       const abs = resolve(ctx.cwd, p);
       let md = readFileSync(abs, "utf8");
       md = setField(md, "Status", "Draft");
-      md = setField(md, "Version", String((Number(getField(md, "Version")) || 1) + 1));
+      // From the Version before the edit: an edit that already bumped it is not bumped twice.
+      md = setField(md, "Version", String(version! + 1));
       writeFileSync(abs, md);
       notify(ctx, `${basename(p).slice(0, 4)} changed: back to Draft, agree it again when ready`);
     }

@@ -129,6 +129,13 @@ test("editing an Agreed spec puts it back to Draft and bumps Version", async () 
   assert.match(md, /\| Status \| Draft \|/);
   const before = Number(/\| Version \| (\d+) \|/.exec(FILLED)![1]);
   assert.match(md, new RegExp(`\\| Version \\| ${before + 1} \\|`));
+  // An edit that bumps Version itself is not bumped a second time.
+  writeFileSync(join(h.cwd, "specs/0001_spec_x.md"), md.replace("| Status | Draft |", "| Status | Agreed |"));
+  const ev2 = { ...ev, toolCallId: "e2" };
+  await h.fire("tool_call", ev2);
+  writeFileSync(join(h.cwd, "specs/0001_spec_x.md"), md.replace(/\| Version \| \d+ \|/, `| Version | ${before + 2} |`));
+  await h.fire("tool_result", ev2);
+  assert.match(readFileSync(join(h.cwd, "specs/0001_spec_x.md"), "utf8"), new RegExp(`\\| Version \\| ${before + 2} \\|`));
 });
 
 test("plan mode active blocks spec mode; spec mode answers plan mode's mutex", async () => {
