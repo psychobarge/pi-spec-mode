@@ -277,3 +277,61 @@ test("agent setting an Agreed spec to Refused moves it instead of resetting it t
   assert.match(moved, /\| Status \| Refused \|/);
   assert.doesNotMatch(await h.prompt(), /0001_spec_a\.md —/);
 });
+
+test("only /spec agree makes a spec Agreed: an agent write that sets Agreed goes back to Draft", async () => {
+  const h = harness({ plan: true });
+  await h.fire("session_start");
+  await h.commands.spec.handler("start", h.ctx);
+  mkdirSync(join(h.cwd, "specs"));
+  const p = join(h.cwd, "specs/0001_spec_x.md");
+  const AGREED = FILLED.replace("| Status | Draft |", "| Status | Agreed |");
+  // New file written directly as Agreed.
+  const ev = { toolName: "write", toolCallId: "w1", input: { path: "specs/0001_spec_x.md" }, isError: false };
+  await h.fire("tool_call", ev);
+  writeFileSync(p, AGREED);
+  await h.fire("tool_result", ev);
+  assert.match(readFileSync(p, "utf8"), /\| Status \| Draft \|/);
+  assert.match(readFileSync(p, "utf8"), /\| Version \| 1 \|/); // never agreed: no Version bump
+  assert.match(h.notes.at(-1)!, /only \/spec agree/);
+  // Existing Draft edited to Agreed.
+  const ev2 = { ...ev, toolName: "edit", toolCallId: "e2", input: { path: "specs/0001_spec_x.md" } };
+  await h.fire("tool_call", ev2);
+  writeFileSync(p, AGREED);
+  await h.fire("tool_result", ev2);
+  assert.match(readFileSync(p, "utf8"), /\| Status \| Draft \|/);
+  await h.commands.spec.handler("implement 1", h.ctx);
+  assert.deepEqual(h.sent.user, []);
+});
+
+test("verify run: stamping an Agreed spec keeps it Agreed, changing it or self-agreeing does not", async () => {
+  const h = harness();
+  await h.fire("session_start");
+  mkdirSync(join(h.cwd, "specs"));
+  const AGREED = FILLED.replace("| Status | Draft |", "| Status | Agreed |");
+  const a = join(h.cwd, "specs/0001_spec_a.md");
+  const b = join(h.cwd, "specs/0002_spec_b.md");
+  writeFileSync(a, AGREED);
+  writeFileSync(b, FILLED);
+  await h.commands.spec.handler("verify", h.ctx);
+  const edit = async (file: string, id: string, next: string) => {
+    const ev = { toolName: "edit", toolCallId: id, input: { path: file }, isError: false };
+    await h.fire("tool_call", ev);
+    writeFileSync(file, next);
+    await h.fire("tool_result", ev);
+    return readFileSync(file, "utf8");
+  };
+  // Only the Last verified stamp changes: still Agreed, same Version.
+  const stamped = AGREED.replace(/\| Last verified \|.*\|/, "| Last verified | 2026-11-12 |");
+  assert.equal(await edit(a, "v1", stamped), stamped);
+  // Agreed → Implemented (drift fix asked by the verify contract) is left alone.
+  const implemented = stamped.replace("| Status | Agreed |", "| Status | Implemented |");
+  assert.equal(await edit(a, "v2", implemented), implemented);
+  // Content of an Agreed spec changes: back to Draft, Version + 1.
+  writeFileSync(a, AGREED);
+  const changed = await edit(a, "v3", `${stamped}\nA rule nobody agreed.\n`);
+  assert.match(changed, /\| Status \| Draft \|/);
+  assert.match(changed, /\| Version \| 2 \|/);
+  assert.match(changed, /A rule nobody agreed\./);
+  // Draft → Agreed by the agent: back to Draft.
+  assert.match(await edit(b, "v4", AGREED), /\| Status \| Draft \|/);
+});

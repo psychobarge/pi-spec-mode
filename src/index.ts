@@ -35,7 +35,7 @@ export default function specMode(pi: ExtensionAPI) {
   let settings = DEFAULT_SETTINGS;
   let session: object | undefined;
   let completeRequested = false;
-  const agreedBeforeEdit = new Map<string, number>(); // toolCallId editing an Agreed spec → its Version before the edit
+  const beforeEdit = new Map<string, string>(); // toolCallId of a write/edit in the specs folder → the file's content before it ("" for a new file)
 
   const specsAbs = (ctx: ExtensionContext) => resolve(ctx.cwd, settings.specsDir);
   const rel = (ctx: ExtensionContext, p: string) => relative(ctx.cwd, resolve(ctx.cwd, p));
@@ -375,29 +375,37 @@ export default function specMode(pi: ExtensionAPI) {
       if (p.split(/[\\/]/).some((s) => s.startsWith("-"))) return { block: true, reason: `Spec mode: file and folder names cannot start with "-".` };
       // pi rewrites `@x`, `~/x`, `file://…` and (on Windows) `/c/x` before writing: give it the absolute path that was just checked.
       event.input.path = abs;
-      const md = state.mode === "spec" && existsSync(abs) ? readFileSync(abs, "utf8") : "";
-      if (getField(md, "Status") === "Agreed") agreedBeforeEdit.set(event.toolCallId, Number(getField(md, "Version")) || 1);
+      beforeEdit.set(event.toolCallId, existsSync(abs) ? readFileSync(abs, "utf8") : "");
       return;
     }
     return { block: true, reason: `Spec mode: the ${event.toolName} tool is not available. Leave spec mode (/spec exit) to use it.` };
   });
 
   pi.on("tool_result", async (event, ctx) => {
-    if (state.mode === "off" || (event.toolName !== "write" && event.toolName !== "edit") || event.isError) return;
+    if (state.mode === "off" || (event.toolName !== "write" && event.toolName !== "edit")) return;
+    const before = beforeEdit.get(event.toolCallId) ?? "";
+    beforeEdit.delete(event.toolCallId);
+    if (event.isError) return;
     const p = rel(ctx, String(event.input.path ?? ""));
     if (!SPEC_FILE.test(basename(p)) || !isInside(settings.specsDir, ctx.cwd, p)) return;
-    // Refused wins over the "changed Agreed spec goes back to Draft" rule.
-    if (getField(readFileSync(resolve(ctx.cwd, p), "utf8"), "Status") === "Refused") return agreedBeforeEdit.delete(event.toolCallId), sweep(ctx);
-    const version = agreedBeforeEdit.get(event.toolCallId);
-    if (agreedBeforeEdit.delete(event.toolCallId)) {
-      // Rule: a changed Agreed spec must be agreed again.
-      const abs = resolve(ctx.cwd, p);
-      let md = readFileSync(abs, "utf8");
+    const abs = resolve(ctx.cwd, p);
+    let md = readFileSync(abs, "utf8");
+    // Refused wins over the "back to Draft" rules below.
+    if (getField(md, "Status") === "Refused") return sweep(ctx);
+    const wasAgreed = getField(before, "Status") === "Agreed";
+    const isAgreed = getField(md, "Status") === "Agreed";
+    // A verify run stamps `Last verified` on an Agreed spec: that alone is not a change.
+    const unstamped = (s: string) => setField(s, "Last verified", "");
+    // Rule 1: only /spec agree makes a spec Agreed.
+    const selfAgreed = isAgreed && !wasAgreed;
+    // Rule 2: a changed Agreed spec must be agreed again. A verify run may still move it to another status (Implemented).
+    const changed = wasAgreed && (state.mode === "spec" || (isAgreed && unstamped(before) !== unstamped(md)));
+    if (selfAgreed || changed) {
       md = setField(md, "Status", "Draft");
       // From the Version before the edit: an edit that already bumped it is not bumped twice.
-      md = setField(md, "Version", String(version! + 1));
+      if (wasAgreed) md = setField(md, "Version", String((Number(getField(before, "Version")) || 1) + 1));
       writeFileSync(abs, md);
-      notify(ctx, `${basename(p).slice(0, 4)} changed: back to Draft, agree it again when ready`);
+      notify(ctx, selfAgreed ? `${basename(p).slice(0, 4)}: only /spec agree can set a spec to Agreed, back to Draft` : `${basename(p).slice(0, 4)} changed: back to Draft, agree it again when ready`);
     }
     if (state.mode === "spec" && state.spec !== p) save(ctx, { ...state, spec: p });
     else refresh(ctx);
