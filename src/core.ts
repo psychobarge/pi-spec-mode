@@ -120,7 +120,7 @@ const GIT_FLAGS = /^-\d+$|^-[nplsiwLb]$|^--(oneline|stat|name-only|name-status|g
 
 /** Fail-closed: every command of a pipeline/list must be on the allowlist with allowed flags; no redirection (except to /dev/null), substitution or expansion. */
 export function isReadOnlyCommand(cmd: string): boolean {
-  cmd = cmd.replace(/[0-9&]?>>?\s*\/dev\/null|[0-9]>&[0-9]/g, "");
+  cmd = cmd.replace(/[0-9&]?>>?\s*\/dev\/null(?=[\s|;&)]|$)|[0-9]>&[0-9]/g, ""); // the lookahead refuses `>/dev/nullx`
   if (/[>`]|<\(/.test(cmd)) return false;
   // Expansions can produce a flag the check never saw: `$(…)`, `${X:--o}`, `$'\x2do'`, `$_`, `$IFS` splitting, `{-o,out}`.
   if (/\$[A-Za-z_{('"]/.test(cmd.replace(/'[^']*'/g, "''")) || /\{[^}]*(,|\.\.)[^}]*\}/.test(cmd)) return false;
