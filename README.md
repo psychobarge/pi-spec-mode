@@ -51,6 +51,21 @@ flowchart LR
 
 `/spec verify` runs over every spec outside `Refused/`, oldest check first, and fixes a spec that drifted from the code.
 
+```mermaid
+flowchart LR
+    start(( )) -->|/spec verify| Queue["<b>Queue</b><br/>verifyCount specs,<br/>oldest Last verified first"]
+    Queue --> Check["<b>Check each claim</b><br/>rules, Feedback, numbers, header"]
+    Check -->|spec wrong, code works| Fix["fix the spec"]
+    Check -->|code broken| Report
+    Check -->|a rule must change| Ask["spec_question<br/>to the user"]
+    Check -->|undecidable| Report
+    Fix -->|Agreed spec changed| Draft["back to <b>Draft</b>"]
+    Fix --> Stamp
+    Ask --> Stamp
+    Check -->|all claims hold| Stamp["Last verified = today"]
+    Stamp --> Report["<b>Report</b><br/>then back to the previous mode"]
+```
+
 ## Make your own template (do it)
 
 The [bundled template](templates/spec_template.md) is deliberately generic. Spec quality comes from a template that speaks your project's language: a game needs "feel" and balance numbers, an API needs contracts and error codes, a mobile app needs screens and offline states.
