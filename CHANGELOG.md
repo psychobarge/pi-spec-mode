@@ -1,10 +1,37 @@
 # Changelog
 
+## unreleased
+
+### Added
+
+- In the spec picker of the `/spec` menu, ↑ on the first spec jumps to the last one and ↓ on the last spec back to the first, so the newest specs are one key away.
+- `/spec settings` is now interactive: after showing the effective settings it opens a menu to change `specsDir`, `language`, `verifyCount` or `renameSession` and save it in the project or the global file. Invalid values are refused with the same rules as the files, other keys are kept, and a settings file that is not valid JSON is never overwritten.
+- `renamePlanSession` setting (off by default): `/spec implement` renames the session `spec NNNN planning` before handing spec `NNNN` to plan mode, whether the spec is typed or picked from the `/spec` menu.
+- `renameSession` setting (off by default): the session that creates a spec is renamed `spec NNNN creation`, so `/resume` shows which spec it wrote.
+- `/spec verify` ends by asking whether to agree again each spec it changed: an `Agreed` spec that had to be fixed goes back to `Draft`, and you get one question per spec that changed that way (`Agree again` / `Keep Draft`). A spec only stamped `Last verified` stays `Agreed` and is not offered, and so is a spec that was already `Draft`.
+- `/spec agree <spec>` agrees an existing `Draft` spec (`/spec agree 0003`) with the same template checks as `/spec agree`: answering `Keep Draft` after a verify run is not final, and you no longer have to edit the `Status` row by hand. `Implemented` and `Refused` specs are refused.
+
+### Changed
+
+- The `/spec` menu uses the command words of `/spec ` + Tab (`exit (leave spec mode)` instead of “Leave spec mode”, `implement (hand a spec to plan mode)`...) and offers exactly the same commands in every state: `agree` outside spec mode (picks a Draft spec), `template` in spec mode and `exit` during a verify run are now in both.
+- The footer reads `✎ spec-mode` and is blue instead of violet.
+- Spec mode now closes only on the spec it was opened for: `/spec agree 0003` on another spec agrees it and keeps the session that is writing `0004` running, where it used to close. Conversely `/spec refuse` (or a hand-set `Status | Refused`) on the spec in the footer leaves spec mode instead of leaving it open with nothing left to write.
+
+- `/spec template` no longer just copies the generic template: it warns you first, then the agent quickly analyses the project (type, stack, domain) and rewrites `specs/spec_template.md` for it, and asks you to reread the result — `/spec agree` checks every spec against that file. Answer `No` and you are offered the plain copy instead. The agent may change the template only during this run.
+
+### Fixed
+
+- A spec file that is a symbolic link is now ignored: a linked spec whose target said `Status | Refused` made session start write the `REFUSED` banner into the target, outside the specs folder, then move the link into `specs/Refused/` where it no longer resolved.
+- `/spec agree 9999` or `/spec verify 9999` (a number or spec file name that matches no spec, or a refused one) now answers `No spec "9999"`: it used to turn spec mode on and send `agree 9999` to the agent as a request.
+- During `/spec verify`, an `Agreed` spec the agent set to `Draft` itself is now treated like any changed `Agreed` spec: `Version` + 1, a notice, and the `Agree again` question at the end of the run. It used to stay `Draft` silently with the same `Version`. A spec whose only change is that status line stays `Agreed`.
+- A `specsDir` setting that points to an existing file (`"README.md"`) is ignored with a warning and `"specs"` is used, like a path outside the project: it used to make `/spec list` and the other commands fail with `ENOTDIR`.
+- `/spec list` shows a `Last verified` date in the future (a typo such as `2027-01-01`) as `0 d ago` instead of a negative age.
+
 ## 0.0.2
 
 ### Added
 
-- The `/spec` menu no longer asks you to type a spec number: “Implement a spec”, “Refuse a spec” and “Restore a refused spec” show a list of the specs they accept (`0001 · Agreed · login`), filtered on what the action can act on: only `Agreed` specs can be implemented, only `specs/Refused/` ones restored, and only the specs folder is offered for a refusal. Nothing to offer → a message naming the command to type. `/spec implement 0003` and friends still work.
+- The `/spec` menu no longer asks you to type a spec number: `implement`, `refuse` and `restore` (and `agree` outside spec mode) show a list of the specs they accept (`0001 · Agreed · login`), filtered on what the action can act on: only `Agreed` specs can be implemented, only `specs/Refused/` ones restored, and only the specs folder is offered for a refusal. Nothing to offer → a message naming the command to type. `/spec implement 0003` and friends still work.
 - `examples/0001_spec_dark_mode.md` ships with the package: a deliberately barebone but complete spec to read before writing your own. The tests read their fixture from it, so it cannot drift from the format `/spec agree` accepts.
 - GitHub Actions runs `npm run typecheck` and `npm test` on every push and pull request (Node 22): a regression in the bash filter or the status rules now shows up without anyone remembering to run the tests.
 

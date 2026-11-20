@@ -1,5 +1,5 @@
 // Pure helpers: no pi imports, so `node --test` can load them directly.
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 // `i`: on a case-insensitive disk (macOS, Windows) `x.MD` is the same file as `x.md`.
@@ -10,7 +10,8 @@ export function listSpecs(specsDir: string, withRefused = false): string[] {
   const out: string[] = [];
   for (const dir of [specsDir, join(specsDir, "Implemented"), ...(withRefused ? [join(specsDir, "Refused")] : [])]) {
     if (!existsSync(dir)) continue;
-    for (const f of readdirSync(dir)) if (SPEC_FILE.test(f)) out.push(join(dir, f));
+    // A linked spec is skipped: reading, refusing or moving it would write to the link's target, outside the specs folder.
+    for (const f of readdirSync(dir)) if (SPEC_FILE.test(f) && !lstatSync(join(dir, f)).isSymbolicLink()) out.push(join(dir, f));
   }
   return out.sort();
 }
@@ -82,16 +83,25 @@ export function verifyQueue(specsDir: string, today: string, count = 2): string[
   return pick.every((r) => r.d === today) ? [] : pick.map((r) => r.p);
 }
 
+/** Every spec, Refused/ included, by number: what /spec list and the picker show. */
+function specRows(specsDir: string) {
+  return listSpecs(specsDir, true)
+    .sort((a, b) => basename(a).localeCompare(basename(b)))
+    .map((p) => {
+      const md = readFileSync(p, "utf8");
+      const [, num, name] = SPEC_FILE.exec(basename(p))!;
+      const dir = basename(dirname(p));
+      const folder: SpecChoice["folder"] = dir === "Implemented" || dir === "Refused" ? dir : "";
+      return { num, name, status: getField(md, "Status") || "?", folder, verified: getField(md, "Last verified") || "" };
+    });
+}
+
 /** One line per spec, Refused/ included: number, Status, Last verified with its age, name. */
 export function specTable(specsDir: string, today: string): string[] {
-  const byNumber = listSpecs(specsDir, true).sort((a, b) => basename(a).localeCompare(basename(b)));
-  return byNumber.map((p) => {
-    const md = readFileSync(p, "utf8");
-    const [, num, name] = SPEC_FILE.exec(basename(p))!;
-    const d = getField(md, "Last verified") || "";
-    const age = /^\d{4}-\d{2}-\d{2}$/.test(d) ? ` (${Math.round((Date.parse(today) - Date.parse(d)) / 864e5)} d ago)` : "";
+  return specRows(specsDir).map(({ num, name, status, verified: d }) => {
+    const age = /^\d{4}-\d{2}-\d{2}$/.test(d) ? ` (${Math.max(0, Math.round((Date.parse(today) - Date.parse(d)) / 864e5))} d ago)` : "";
     const verified = d ? `verified ${d}${age}` : "never verified";
-    return `${num}  ${(getField(md, "Status") || "?").padEnd(11)}  ${verified.padEnd(32)}  ${name}`;
+    return `${num}  ${status.padEnd(11)}  ${verified.padEnd(32)}  ${name}`;
   });
 }
 
@@ -105,15 +115,12 @@ export interface SpecChoice {
 
 /** One picker entry per spec, Refused/ included: `0001 · Agreed · login`. */
 export function specChoices(specsDir: string): SpecChoice[] {
-  return listSpecs(specsDir, true)
-    .sort((a, b) => basename(a).localeCompare(basename(b)))
-    .map((p): SpecChoice => {
-      const [, num, name] = SPEC_FILE.exec(basename(p))!;
-      const status = getField(readFileSync(p, "utf8"), "Status") || "?";
-      const dir = basename(dirname(p));
-      const folder = dir === "Implemented" || dir === "Refused" ? dir : "";
-      return { num, status, folder, label: `${num} · ${status} · ${name}`, arg: num };
-    });
+  return specRows(specsDir).map(({ num, name, status, folder }) => ({ num, status, folder, label: `${num} · ${status} · ${name}`, arg: num }));
+}
+
+/** Spec picker cursor after ↑ or ↓: both wrap around, ↑ on the first spec to the last and ↓ on the last to the first. */
+export function pickerMove(at: number, count: number, key: "up" | "down"): number {
+  return (at + (key === "up" ? count - 1 : 1)) % count;
 }
 
 export const REFUSED_BANNER = (date: string) =>
@@ -151,6 +158,32 @@ export function sweepRefused(specsDir: string, date: string): string[] {
 export function isInside(dir: string, cwd: string, p: string): boolean {
   const rel = relative(resolve(cwd, dir), resolve(cwd, p));
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/** Why a settings value is refused, or undefined when it is valid. Shared by the settings files and `/spec settings`. */
+export function settingError(key: string, value: unknown, cwd: string): string | undefined {
+  switch (key) {
+    // The specs folder is the only place spec mode may write: never let a setting point it outside the project.
+    // A folder not created yet is fine (no spec written yet); an existing file is not.
+    case "specsDir":
+      return typeof value !== "string" || !isInside(".", cwd, value) || statSync(resolve(cwd, value), { throwIfNoEntry: false })?.isDirectory() === false
+        ? "specsDir must be a folder inside the project" : undefined;
+    case "language":
+      return typeof value !== "string" || !value.trim() ? "language must be a non-empty string" : undefined;
+    case "verifyCount":
+      return !Number.isInteger(value) || (value as number) < 1 ? "verifyCount must be a positive integer" : undefined;
+    case "renameSession":
+    case "renamePlanSession":
+      return typeof value !== "boolean" ? `${key} must be true or false` : undefined;
+  }
+  return `unknown setting ${key}`;
+}
+
+/** A settings file's text with one key set, other keys kept. Throws on a file that is not a JSON object rather than overwrite it. */
+export function withSetting(text: string | undefined, key: string, value: unknown): string {
+  const obj = text?.trim() ? JSON.parse(text) : {};
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) throw new Error("not a JSON object");
+  return `${JSON.stringify({ ...obj, [key]: value }, null, 2)}\n`;
 }
 
 const NONE = /(?!)/;

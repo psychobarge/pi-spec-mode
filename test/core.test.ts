@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
-  emptySections, getField, isInside, isReadOnlyCommand, leftovers, missingSections, nextSpecNumber,
-  refuseSpec, resolveSpec, restoreSpec, setField, specChoices, specSummary, specTable, sweepRefused, verifyQueue,
+  emptySections, getField, isInside, isReadOnlyCommand, leftovers, missingSections, nextSpecNumber, pickerMove,
+  refuseSpec, resolveSpec, restoreSpec, setField, settingError, specChoices, specSummary, specTable, sweepRefused, verifyQueue, withSetting,
 } from "../src/core.ts";
 
 const template = readFileSync(new URL("../templates/spec_template.md", import.meta.url), "utf8");
@@ -84,7 +84,7 @@ test("bash: readers pass, anything that writes is refused", () => {
     "sort \"-o\" out a", "sort \\-o out a", "sort ${X:--o} out", "sort $'\\x2do' out", "echo -o; sort $_ out", "sort x$IFS-o out", "sort {-o,out}",
     "git log --ext-diff", "git -c core.pager=sh log", "rg -z x", "read x", "date -s 12:00",
     "echo \"'\" $(touch pwned) \"'\"", "echo \\' $(touch pwned) \\'", "ls # '\necho $(touch pwned) # '", "echo hi2>&1x", "echo payload2>&1/../escaped.txt",
-    "sort *", "find . * \\;", "cat ?x", "cat [-a]x", "sort \"\"*", "sort \"$@\"*", "sort $1", "constructor x", "constructor -x", "toString"])
+    "echo `id`", "cat `echo a.md`", "sort *", "find . * \\;", "cat ?x", "cat [-a]x", "sort \"\"*", "sort \"$@\"*", "sort $1", "constructor x", "constructor -x", "toString"])
     assert.ok(!isReadOnlyCommand(c), c);
 });
 
@@ -119,6 +119,11 @@ test("specTable lists every spec with status and verification age, Refused/ incl
   assert.deepEqual(specTable(specsDir({}), "2026-11-16"), []);
 });
 
+test("specTable shows a Last verified date in the future as 0 days ago, never a negative age", () => {
+  const rows = specTable(specsDir({ "0001_spec_a.md": spec("Agreed", "2027-01-01") }), "2026-11-20");
+  assert.match(rows[0], /verified 2027-01-01 \(0 d ago\)/);
+});
+
 test("specChoices: one picker entry per spec, Refused/ included, number as argument", () => {
   const dir = specsDir({ "0001_spec_login.md": spec("Agreed", ""), "Implemented/0002_spec_offline.md": spec("Implemented", "") });
   refuseSpec(dir, join(dir, "0001_spec_login.md"), "2026-11-12");
@@ -138,4 +143,35 @@ test("specSummary: H1 title and the first line of Goal, capped", () => {
   assert.equal(specSummary("# 0003 Spec: Offline mode\n\n## Problem\n\nx\n"), "Offline mode");
   assert.equal(specSummary("## 2. Goal\n\n## 3. Non-goals\n"), "");
   assert.equal(specSummary(`# T\n## Goal\n${"x".repeat(300)}`).length, 200);
+});
+
+test("settingError accepts valid values and names the rule a bad one breaks", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "set-"));
+  writeFileSync(join(cwd, "file.md"), "");
+  assert.equal(settingError("specsDir", "doc/specs", cwd), undefined);
+  assert.match(settingError("specsDir", "../out", cwd)!, /inside the project/);
+  assert.match(settingError("specsDir", "file.md", cwd)!, /folder/);
+  assert.equal(settingError("language", "Français", cwd), undefined);
+  assert.match(settingError("language", "  ", cwd)!, /non-empty/);
+  assert.equal(settingError("verifyCount", 3, cwd), undefined);
+  assert.match(settingError("verifyCount", 0, cwd)!, /positive integer/);
+  assert.match(settingError("verifyCount", Number("two"), cwd)!, /positive integer/);
+  assert.match(settingError("renameSession", "yes", cwd)!, /true or false/);
+  assert.match(settingError("renamePlanSession", 1, cwd)!, /renamePlanSession must be true or false/);
+  assert.match(settingError("other", 1, cwd)!, /unknown setting/);
+});
+
+test("withSetting sets one key, keeps the others and refuses a file that is not a JSON object", () => {
+  assert.deepEqual(JSON.parse(withSetting('{ "language": "French" }', "verifyCount", 4)), { language: "French", verifyCount: 4 });
+  assert.deepEqual(JSON.parse(withSetting(undefined, "renameSession", true)), { renameSession: true });
+  assert.throws(() => withSetting("{ broken", "language", "French"));
+  assert.throws(() => withSetting("[1]", "language", "French"), /not a JSON object/);
+});
+
+test("pickerMove: up on the first spec wraps to the last, down on the last wraps to the first", () => {
+  assert.equal(pickerMove(0, 4, "up"), 3);
+  assert.equal(pickerMove(2, 4, "up"), 1);
+  assert.equal(pickerMove(1, 4, "down"), 2);
+  assert.equal(pickerMove(3, 4, "down"), 0);
+  assert.equal(pickerMove(0, 1, "up"), 0);
 });
